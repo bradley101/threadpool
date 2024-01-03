@@ -29,11 +29,20 @@ private:
     void initThreadPool() {
         for (auto idx = 0; idx < _numThreads; ++idx) {
             std::thread th([&] {
-                std::unique_lock<std::mutex> lock(_mtx);
-                _cv.wait(lock);
+                bool closeTh = false;
+                while (!closeTh)
+                {
+                    std::unique_lock<std::mutex> lock(_mtx);
+                    _cv.wait(lock, [&] {
+                        if (_shutdown) {
+                            closeTh = true;
+                            return true;
+                        }
+                        auto task = std::move(_taskQ.front()); _taskQ.pop();
+                        task();
+                    });
+                }
 
-                auto task = std::move(_taskQ.front()); _taskQ.pop();
-                task();
             });
             _tvec.push_back(std::move(th));
         }
@@ -64,7 +73,7 @@ public:
         auto fut = task.get_future();
         {
             std::lock_guard<std::mutex> lock(_mtx);
-            _taskQ.push(task);
+            _taskQ.push(std::move(task));
         }
         _cv.notify_all();
         return fut;
@@ -81,7 +90,9 @@ private:
 
     int                         _numThreads;
 
-    std::queue<std::packaged_task<RetType(Args...)>>     _taskQ;
+    std::queue<std::packaged_task<RetType()>>     _taskQ;
+
+    bool                        _shutdown;
 };
 
 

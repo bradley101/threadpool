@@ -14,6 +14,9 @@ int someTask(std::string data) {
 int main() {
     tpool<int, std::string> pool(1);
 
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+
     pool.addTask(someTask, "Some data");
+    pool.addTask(someTask, "Some more datadata");
 
 }
