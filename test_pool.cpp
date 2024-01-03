@@ -6,12 +6,13 @@
 
 #include <iostream>
 
-int someTask(const std::string data) {
+int someTask(std::string data) {
+    std::cout << data << "\n";
     return 0;
 }
 
 int main() {
-    tpool<someTask, const std::string> pool(5);
+    tpool<int, std::string> pool(1);
 
     pool.addTask(someTask, "Some data");
 

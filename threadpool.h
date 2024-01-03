@@ -27,10 +27,25 @@ class tpool
 
 private:
     void initThreadPool() {
+        for (auto idx = 0; idx < _numThreads; ++idx) {
+            std::thread th([&] {
+                std::unique_lock<std::mutex> lock(_mtx);
+                _cv.wait(lock);
 
+                auto task = std::move(_taskQ.front()); _taskQ.pop();
+                task();
+            });
+            _tvec.push_back(std::move(th));
+        }
     }
 
 public:
+
+    ~tpool() {
+        for (auto& th : _tvec) {
+            th.join();
+        }
+    }
 
     tpool(int numThreads = 10) : _numThreads(numThreads) {
         log("Initializing the Thread Pool");
@@ -44,11 +59,18 @@ public:
         }
     }
 
-    std::future<RetType(Args...)> addTask(std::function<RetType(Args...)> func, Args&&... args) {
-        
+    std::future<RetType> addTask(std::function<RetType(Args...)> func, Args&&... args) {
+        std::packaged_task<RetType()> task(std::bind(func, args...));
+        auto fut = task.get_future();
+        {
+            std::lock_guard<std::mutex> lock(_mtx);
+            _taskQ.push(task);
+        }
+        _cv.notify_all();
+        return fut;
     }
 
-    bool join();
+//    bool join();
 
 private:
 
