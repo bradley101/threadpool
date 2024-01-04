@@ -1,6 +1,7 @@
 #ifndef THREADPOOL_THREADPOOL_H
 #define THREADPOOL_THREADPOOL_H
 
+#include <algorithm>
 #include <atomic>
 #include <future>
 #include <iostream>
@@ -32,15 +33,19 @@ private:
                 bool closeTh = false;
                 while (!closeTh)
                 {
-                    std::unique_lock<std::mutex> lock(_mtx);
-                    _cv.wait(lock, [&] {
+                    auto task = std::packaged_task<RetType()>([]{ return 0; });
+                    {
+                        std::unique_lock<std::mutex> lock(_mtx);
+                        _cv.wait(lock);
                         if (_shutdown) {
                             closeTh = true;
-                            return true;
+                            continue;
                         }
-                        auto task = std::move(_taskQ.front()); _taskQ.pop();
-                        task();
-                    });
+                        auto _task = std::move(_taskQ.front()); _taskQ.pop();
+                        std::swap(task, _task);
+                    }
+
+                    task();
                 }
 
             });
@@ -51,6 +56,7 @@ private:
 public:
 
     ~tpool() {
+        closeThreads();
         for (auto& th : _tvec) {
             th.join();
         }
@@ -79,7 +85,13 @@ public:
         return fut;
     }
 
-//    bool join();
+    bool closeThreads() {
+        {
+            std::lock_guard<std::mutex> lock(_mtx);
+            _shutdown = true;
+        }
+        _cv.notify_all();
+    }
 
 private:
 
